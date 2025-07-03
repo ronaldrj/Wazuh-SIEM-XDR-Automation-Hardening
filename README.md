@@ -105,10 +105,7 @@ Install the Wazuh Dashboard.
 Configure all components to work together on a single machine.
 Provide you with the default admin credentials for the Wazuh Dashboard.
 
- ```curl -sO https://packages.wazuh.com/4.12/wazuh-install.sh```
- ```sudo bash ./wazuh-install.sh --all-in-one```
- ```cd Wazuh-SIEM-XDR-Automation-Hardening/```
- ```cp template/authd.pass /var/ossec/etc/``` 
+<pre lang="bash"><code> ```bash curl -sO https://packages.wazuh.com/4.12/wazuh-install.sh sudo bash ./wazuh-install.sh --all-in-one cd Wazuh-SIEM-XDR-Automation-Hardening/ cp template/authd.pass /var/ossec/etc/ ``` </code></pre>
 
 # 4.2. Wazuh Agent Installation : 
        
