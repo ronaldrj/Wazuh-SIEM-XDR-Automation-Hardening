@@ -1,0 +1,24 @@
+---
+- name: Copy and execute bash script on remote servers
+  hosts: all_servers
+  become: yes
+  gather_facts: no
+
+  tasks:    
+    - name: Copy bash script to remote server
+      ansible.builtin.copy:
+        src: suricata_install.sh 
+        dest: /root/suricata_install.sh
+        mode: '0755'
+
+    # Execute the script with sudo
+    - name: Execute the script with sudo
+      ansible.builtin.command: /root/suricata_install.sh
+      register: script_output
+      changed_when: script_output.rc != 0  # Marks task as changed if script fails (optional)
+
+    # (Optional) Print script output
+    - name: Display script output
+      ansible.builtin.debug:
+        var: script_output.stdout_lines
+      when: script_output.stdout  # Only runs if there's output

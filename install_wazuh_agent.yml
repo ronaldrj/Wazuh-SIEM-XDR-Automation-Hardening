@@ -1,0 +1,145 @@
+---
+- name: Deploy Wazuh Agent on Linux Endpoints
+  hosts: all_servers
+  become: yes 
+  gather_facts: yes
+
+  vars:
+    agent_name: "{{ ansible_hostname }}"
+
+  tasks:
+    - name : Ensure common dependencies are installed (Debian/Ubuntu)
+      ansible.builtin.package:
+        name: "{{ item }}"
+        state: present
+      loop:
+        - curl
+        - gnupg
+        - apt-transport-https
+        - ca-certificates
+      when: ansible_os_family == "Debian"
+
+    - name: Install the Wazuh GPG key (Debian/Ubuntu)
+      ansible.builtin.shell: |
+        curl -s https://packages.wazuh.com/key/GPG-KEY-WAZUH | gpg --no-default-keyring --keyring gnupg-ring:/usr/share/keyrings/wazuh.gpg --import && chmod 644 /usr/share/keyrings/wazuh.gpg
+      args:
+        creates: /usr/share/keyrings/wazuh.gpg #Prevents re-running if key already exists
+      when: ansible_os_family == "Debian"
+
+    - name: Add the Wazuh repository (Debian/Ubuntu)
+      ansible.builtin.apt_repository:
+        repo: "deb [signed-by=/usr/share/keyrings/wazuh.gpg] https://packages.wazuh.com/4.x/apt/ stable main"
+        state: present
+        filename: wazuh
+        update_cache: yes
+      when: ansible_os_family == "Debian"
+
+    # --- CentOS/RHEL specific tasks ---
+    - name: Import the GPG key for Wazuh (CentOS/RHEL)
+      ansible.builtin.rpm_key:
+        state: present
+        key: https://packages.wazuh.com/key/GPG-KEY-WAZUH
+      when: ansible_os_family == "RedHat"
+
+    - name: Add the Wazuh repository (CentOS/RHEL)
+      ansible.builtin.copy:
+        dest: /etc/yum.repos.d/wazuh.repo
+        content: |
+          [wazuh]
+          gpgcheck=1
+          gpgkey=https://packages.wazuh.com/key/GPG-KEY-WAZUH
+          enabled=1
+          name=EL-$releasever - Wazuh
+          baseurl=https://packages.wazuh.com/4.x/yum/
+          protect=1
+        owner: root
+        group: root
+        mode: '0644'
+      when: ansible_os_family == "RedHat"
+
+    - name: Update apt repository cache (Debian/Ubuntu)
+      ansible.builtin.apt:
+        update_cache: yes
+      when: ansible_os_family == "Debian"
+
+    - name: Update yum repository cache (CentOS/RHEL)
+      ansible.builtin.command: yum check-update
+      when: ansible_os_family == "RedHat"
+      changed_when: false
+
+    - name: Install Wazuh agent package
+      ansible.builtin.package:
+        name: wazuh-agent
+        state: present
+      environment:        
+        WAZUH_MANAGER: "{{ wazuh_manager_ip }}"
+        WAZUH_AGENT_NAME: "{{ agent_name }}"
+        WAZUH_AGENT_GROUP: "{{ wazuh_group }}"
+
+    - name: Configure ossec.conf with full monitoring settings 
+      ansible.builtin.template:
+        src: template/ossec.conf.j2 
+        dest: /var/ossec/etc/ossec.conf
+        owner: root
+        group: root
+        mode: '0644'
+      notify: Restart Wazuh agent
+
+    - name: Adding Wazuh agent enrollment | Authd password
+      ansible.builtin.template:
+        src: template/authd.pass
+        dest: /var/ossec/etc/authd.pass
+        owner: root
+        group: wazuh
+        mode: '0640'
+      notify: Restart Wazuh agent
+
+    - name: Enable and start Wazuh agent service
+      ansible.builtin.systemd:
+        daemon_reload: yes 
+        name: wazuh-agent
+        state: started
+        enabled: yes
+
+    - name: Disable Wazuh repository to prevent accidental upgrades (Debian/Ubuntu)
+      ansible.builtin.shell: |
+        if grep -qE '^deb .*wazuh.list' /etc/apt/sources.list.d/wazuh.list; then
+          sed -i "s/^deb/#deb/" /etc/apt/sources.list.d/wazuh.list
+          echo "Wazuh repository line has been commented out."
+        else 
+          echo "Wazuh repository line is already commented out or not found. No changes made."
+        fi
+      register: _result_comment_repo_deb
+      changed_when: "'Wazuh repository line has been commented out.' in _result_comment_repo_deb.stdout"
+      notify: Update apt cache after disabling repo
+      when: ansible_os_family == "Debian"
+
+    - name: Disable Wazuh repository to prevent accidental upgrades (CentOS/RHEL)
+      ansible.builtin.lineinfile:
+        path: /etc/yum.repos.d/wazuh.repo
+        regexp: '^enabled=1'
+        line: 'enabled=0'
+        state: present
+        validate: 'yum-config-manager check %s'
+      when: ansible_os_family == "RedHat"
+      notify: Refresh yum cache
+
+    - name: Set Wazuh agent package state to 'hold'
+      ansible.builtin.dpkg_selections:
+        name: wazuh-agent
+        selection: hold   #prevents the Wazuh agent package from being updated on Debian-based systems.
+      when: ansible_os_family == "Debian"
+
+  handlers:
+    - name: Restart Wazuh agent
+      ansible.builtin.systemd:
+        name: wazuh-agent
+        state: restarted
+    
+    - name: Refresh yum cache
+      ansible.builtin.command: yum clean all
+
+    - name: Update apt cache after disabling repo
+      ansible.builtin.apt:
+        update_cache: yes
+      when: ansible_os_family == "Debian" #handler is only relevant for Debian/Ubuntu
