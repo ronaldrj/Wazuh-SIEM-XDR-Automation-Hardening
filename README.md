@@ -105,13 +105,18 @@ Install the Wazuh Dashboard.
 Configure all components to work together on a single machine.
 Provide you with the default admin credentials for the Wazuh Dashboard.
 
+## curl -sO https://packages.wazuh.com/4.12/wazuh-install.sh
+## sudo bash ./wazuh-install.sh --all-in-one
+## cd Wazuh-SIEM-XDR-Automation-Hardening/
+## cp template/authd.pass /var/ossec/etc/ 
+
 # 4.2. Wazuh Agent Installation : 
        
 We have automated the Wazuh agent installation using Ansible. This Ansible playbook checks the server IP and categorizes it into either the production or staging group. It supports installing the Wazuh agent on both Ubuntu and CentOS systems. 
 
 The Ansible playbook copies and applies our customized OSSEC configuration, which includes optimized features and Suricata integration.
 
-After the agent installation, the Wazuh agent will only connect to the Wazuh server if it has a valid authorization key in its authd folder.
+After the agent installation, the Wazuh agent will only connect to the Wazuh server if it has a valid authorization key in its ossec/etc/ folder.
 
 # 4.3. Suricata IDS Installation in Wazuh Agent Servers : 
 
